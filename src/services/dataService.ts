@@ -172,7 +172,12 @@ export const dataService = {
     tone: Meeting['tone'];
     icon_type: Meeting['icon_type'];
     created_by: string;
-  }): Promise<Meeting & { participants: Array<Profile & { role: string }> }> {
+  }): Promise<
+    Meeting & {
+      participants: Array<Profile & { role: string }>;
+      chat_thread_id?: string | null;
+    }
+  > {
     const meeting: Meeting = {
       id: randomUUID(),
       title: input.title,
@@ -214,11 +219,161 @@ export const dataService = {
       role: 'host',
       joined_at: nowIso(),
     });
+    const chat = await this.ensureMeetingChat(saved.id, saved.title, input.created_by);
     const host = await this.getProfile(input.created_by);
     return {
       ...saved,
+      chat_thread_id: chat?.id ?? null,
       participants: host ? [{ ...host, role: 'host' }] : [],
     };
+  },
+
+  async ensureMeetingChat(meetingId: string, title: string, userId: string) {
+    if (env.demoMode) {
+      const existing = [...memoryStore.threads.values()].find((t) => t.meeting_id === meetingId);
+      if (existing) {
+        const members = memoryStore.threadMembers.get(existing.id) ?? new Set();
+        members.add(userId);
+        memoryStore.threadMembers.set(existing.id, members);
+        return existing;
+      }
+      const thread = {
+        id: randomUUID(),
+        title: `${title} chat`,
+        avatar_url: null as string | null,
+        meeting_id: meetingId,
+        updated_at: nowIso(),
+        created_at: nowIso(),
+      };
+      memoryStore.threads.set(thread.id, thread);
+      memoryStore.threadMembers.set(thread.id, new Set([userId]));
+      memoryStore.messages.set(thread.id, []);
+      return thread;
+    }
+
+    const db = getMatuDb();
+    const { data: rows } = await db.from('chat_threads').select('*').eq('meeting_id', meetingId);
+    const found = firstRow(rows as DbRow | DbRow[]);
+    if (found) {
+      const threadId = String(found.id);
+      const { data: membership } = await db
+        .from('chat_thread_members')
+        .select('id')
+        .eq('thread_id', threadId)
+        .eq('user_id', userId);
+      if (asArray(membership as DbRow[]).length === 0) {
+        await db.from('chat_thread_members').insert({
+          id: randomUUID(),
+          thread_id: threadId,
+          user_id: userId,
+          unread: 0,
+        });
+      }
+      return {
+        id: threadId,
+        title: String(found.title),
+        avatar_url: (found.avatar_url as string | null) ?? null,
+        meeting_id: meetingId,
+        updated_at: String(found.updated_at),
+        created_at: String(found.created_at),
+      };
+    }
+
+    const thread = {
+      id: randomUUID(),
+      title: `${title} chat`,
+      avatar_url: null as string | null,
+      meeting_id: meetingId,
+      updated_at: nowIso(),
+      created_at: nowIso(),
+    };
+    const { error } = await db.from('chat_threads').insert(thread);
+    if (error) throw new Error(error.message);
+    await db.from('chat_thread_members').insert({
+      id: randomUUID(),
+      thread_id: thread.id,
+      user_id: userId,
+      unread: 0,
+    });
+    return thread;
+  },
+
+  async addParticipant(meetingId: string, userId: string, role: 'host' | 'participant' = 'participant') {
+    if (env.demoMode) {
+      const existing = [...memoryStore.participants.values()].find(
+        (p) => p.meeting_id === meetingId && p.user_id === userId,
+      );
+      if (existing) {
+        memoryStore.participants.set(existing.id, {
+          ...existing,
+          joined_at: existing.joined_at ?? nowIso(),
+          left_at: null,
+        });
+        return existing;
+      }
+      const part: MeetingParticipant = {
+        id: randomUUID(),
+        meeting_id: meetingId,
+        user_id: userId,
+        role,
+        joined_at: nowIso(),
+        left_at: null,
+      };
+      memoryStore.participants.set(part.id, part);
+      return part;
+    }
+
+    const db = getMatuDb();
+    const { data: rows } = await db
+      .from('meeting_participants')
+      .select('*')
+      .eq('meeting_id', meetingId)
+      .eq('user_id', userId);
+    const found = firstRow(rows as DbRow | DbRow[]);
+    if (found) {
+      await db
+        .from('meeting_participants')
+        .eq('id', String(found.id))
+        .update({ joined_at: nowIso(), left_at: null });
+      return found;
+    }
+    const part = {
+      id: randomUUID(),
+      meeting_id: meetingId,
+      user_id: userId,
+      role,
+      joined_at: nowIso(),
+    };
+    const { error } = await db.from('meeting_participants').insert(part);
+    if (error) throw new Error(error.message);
+    return part;
+  },
+
+  async joinMeeting(meetingId: string, userId: string) {
+    const meeting = await this.getMeeting(meetingId);
+    if (!meeting) return null;
+    await this.setMeetingLive(meetingId);
+    const isHost = meeting.created_by === userId;
+    await this.addParticipant(meetingId, userId, isHost ? 'host' : 'participant');
+    const chat = await this.ensureMeetingChat(meetingId, meeting.title, userId);
+    const full = await this.getMeeting(meetingId);
+    return full ? { ...full, chat_thread_id: chat.id } : null;
+  },
+
+  async findMeetingByRoomCode(roomCodeValue: string) {
+    if (env.demoMode) {
+      const meeting = [...memoryStore.meetings.values()].find(
+        (m) => m.room_code.toLowerCase() === roomCodeValue.toLowerCase(),
+      );
+      return meeting ? this.getMeeting(meeting.id) : null;
+    }
+    const { data } = await getMatuDb()
+      .from('meetings')
+      .select('*')
+      .eq('room_code', roomCodeValue)
+      .single();
+    if (!data) return null;
+    return this.getMeeting(String((data as DbRow).id));
   },
 
   async getMeeting(meetingId: string) {
@@ -331,6 +486,104 @@ export const dataService = {
       });
     }
     return result;
+  },
+
+  async getChatByMeeting(meetingId: string, userId: string) {
+    const meeting = await this.getMeeting(meetingId);
+    if (!meeting) return null;
+    const chat = await this.ensureMeetingChat(meetingId, meeting.title, userId);
+    return chat;
+  },
+
+  async listBanners() {
+    const defaults = [
+      {
+        id: 'default-1',
+        title: 'Connect\nCollaborate\ncreate',
+        subtitle: 'Start a voice meeting with your team in seconds',
+        image_url: 'https://images.unsplash.com/photo-1500530855697-b586d89ba3ee?auto=format&fit=crop&w=1200&q=80',
+        cta_label: 'Start a Meeting',
+        cta_action: 'start_meeting',
+        link_url: null as string | null,
+        badge_label: 'Live Now',
+        accent_color: '#FF8FA3',
+        sort_order: 0,
+        is_active: true,
+      },
+      {
+        id: 'default-2',
+        title: 'Share your\nroom code',
+        subtitle: 'Invite anyone with the room ID — they join from phone or web',
+        image_url: 'https://images.unsplash.com/photo-1522071820081-009f0129c71c?auto=format&fit=crop&w=1200&q=80',
+        cta_label: 'View meetings',
+        cta_action: 'none',
+        link_url: null,
+        badge_label: 'How to',
+        accent_color: '#7EB6FF',
+        sort_order: 1,
+        is_active: true,
+      },
+      {
+        id: 'default-3',
+        title: 'Group chat\nin every call',
+        subtitle: 'Messages stay with the meeting so the whole room stays aligned',
+        image_url: 'https://images.unsplash.com/photo-1556761175-5973dc0f32e7?auto=format&fit=crop&w=1200&q=80',
+        cta_label: 'Open chats',
+        cta_action: 'none',
+        link_url: null,
+        badge_label: 'Tip',
+        accent_color: '#6FCF97',
+        sort_order: 2,
+        is_active: true,
+      },
+    ];
+
+    if (env.demoMode) return defaults;
+
+    try {
+      const { data, error } = await getMatuDb()
+        .from('banners')
+        .select('*')
+        .eq('is_active', true)
+        .order('sort_order', { ascending: true });
+      if (error) return defaults;
+      const rows = asArray(data as DbRow[]);
+      if (rows.length === 0) {
+        await this.seedBanners(defaults);
+        return defaults;
+      }
+      return rows.map((row) => ({
+        id: String(row.id),
+        title: String(row.title ?? ''),
+        subtitle: String(row.subtitle ?? ''),
+        image_url: (row.image_url as string | null) ?? null,
+        cta_label: (row.cta_label as string | null) ?? null,
+        cta_action: String(row.cta_action ?? 'none'),
+        link_url: (row.link_url as string | null) ?? null,
+        badge_label: (row.badge_label as string | null) ?? 'News',
+        accent_color: String(row.accent_color ?? '#FF6B8A'),
+        sort_order: Number(row.sort_order ?? 0),
+        is_active: Boolean(row.is_active),
+      }));
+    } catch {
+      return defaults;
+    }
+  },
+
+  async seedBanners(defaults: Array<Record<string, unknown>>) {
+    try {
+      for (const banner of defaults) {
+        const { id: _id, ...rest } = banner;
+        await getMatuDb().from('banners').insert({
+          id: randomUUID(),
+          ...rest,
+          created_at: nowIso(),
+          updated_at: nowIso(),
+        });
+      }
+    } catch {
+      // banners table may not exist yet
+    }
   },
 
   async listMessages(threadId: string): Promise<ChatMessage[]> {

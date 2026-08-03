@@ -1,0 +1,537 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>MatuCall Web — join production room</title>
+  <script src="https://cdn.socket.io/4.8.1/socket.io.min.js"></script>
+  <style>
+    :root {
+      --bg: #f4f6f8;
+      --card: #fff;
+      --ink: #1c2430;
+      --muted: #6b7785;
+      --accent: #ff6b8a;
+      --ok: #2ecc71;
+      --dark: #1a2332;
+    }
+    * { box-sizing: border-box; }
+    body {
+      margin: 0;
+      font-family: "Segoe UI", system-ui, sans-serif;
+      background: radial-gradient(circle at top left, #ffe8ee, transparent 40%),
+                  radial-gradient(circle at top right, #e8f1ff, transparent 35%),
+                  var(--bg);
+      color: var(--ink);
+      min-height: 100vh;
+    }
+    main {
+      max-width: 920px;
+      margin: 0 auto;
+      padding: 28px 18px 60px;
+    }
+    h1 { margin: 0 0 6px; font-size: 1.8rem; }
+    .sub { color: var(--muted); margin-bottom: 22px; }
+    .grid { display: grid; gap: 16px; grid-template-columns: 1.1fr 1fr; }
+    @media (max-width: 800px) { .grid { grid-template-columns: 1fr; } }
+    .card {
+      background: var(--card);
+      border-radius: 22px;
+      padding: 18px;
+      box-shadow: 0 10px 30px rgba(16,24,40,.06);
+    }
+    label { display: block; font-size: .85rem; color: var(--muted); margin: 10px 0 6px; }
+    input, select, button, textarea {
+      width: 100%;
+      border-radius: 12px;
+      border: 1px solid #e5e9ef;
+      padding: 11px 12px;
+      font: inherit;
+    }
+    button {
+      background: var(--dark);
+      color: #fff;
+      border: none;
+      cursor: pointer;
+      font-weight: 700;
+      margin-top: 12px;
+    }
+    button.secondary { background: #eef2f6; color: var(--ink); }
+    button.danger { background: #e74c3c; }
+    button:disabled { opacity: .55; cursor: not-allowed; }
+    .row { display: flex; gap: 10px; }
+    .row > * { flex: 1; }
+    .status {
+      font-size: .9rem;
+      padding: 10px 12px;
+      border-radius: 12px;
+      background: #f0f3f7;
+      margin-top: 12px;
+      white-space: pre-wrap;
+    }
+    .ok { color: var(--ok); font-weight: 700; }
+    .err { color: #c0392b; font-weight: 700; }
+    .peers { display: grid; gap: 10px; margin-top: 12px; }
+    .peer {
+      display: flex; align-items: center; gap: 10px;
+      padding: 10px 12px; border-radius: 14px; background: #f7f9fb;
+    }
+    .dot { width: 10px; height: 10px; border-radius: 50%; background: #bbb; }
+    .dot.live { background: var(--ok); box-shadow: 0 0 0 4px rgba(46,204,113,.15); }
+    .wave {
+      height: 18px; width: 48px; display: flex; align-items: end; gap: 3px;
+    }
+    .wave span {
+      width: 4px; background: var(--accent); border-radius: 4px;
+      height: 30%; transition: height .12s linear;
+    }
+    .chat {
+      height: 220px; overflow: auto; background: #f7f9fb;
+      border-radius: 14px; padding: 10px; margin-top: 8px;
+    }
+    .msg { margin: 6px 0; font-size: .92rem; }
+    .msg b { color: var(--dark); }
+    audio { display: none; }
+  </style>
+</head>
+<body>
+<main>
+  <h1>MatuCall Web Client</h1>
+  <p class="sub">Local HTML → production API <code>https://call.api.matubyte.com</code>. Use this as a second participant with your phone.</p>
+
+  <div class="grid">
+    <section class="card">
+      <h3>1. Auth</h3>
+      <label>API base</label>
+      <input id="apiBase" value="https://call.api.matubyte.com" />
+      <label>Email</label>
+      <input id="email" type="email" autocomplete="username" placeholder="tu correo" />
+      <label>Password</label>
+      <input id="password" type="password" autocomplete="current-password" placeholder="tu clave" />
+      <div class="row">
+        <button id="btnSignIn">Sign in</button>
+        <button class="secondary" id="btnSignUp">Sign up</button>
+      </div>
+      <label>Full name (sign up)</label>
+      <input id="fullName" placeholder="Tu nombre" />
+      <div id="authStatus" class="status">Not signed in</div>
+
+      <h3 style="margin-top:22px">2. Join room</h3>
+      <label>Room code</label>
+      <input id="roomCode" placeholder="ej. ABC123" />
+      <div class="row">
+        <button id="btnJoin">Join meeting</button>
+        <button class="danger" id="btnLeave" disabled>Leave</button>
+      </div>
+      <div id="callStatus" class="status">Idle</div>
+
+      <h3 style="margin-top:22px">3. Devices</h3>
+      <label>Microphone</label>
+      <select id="micSelect"></select>
+      <label>Speaker / output</label>
+      <select id="speakerSelect"></select>
+      <button class="secondary" id="btnMute" disabled>Mute</button>
+    </section>
+
+    <section class="card">
+      <h3>Live participants</h3>
+      <div id="peers" class="peers"><div class="peer">Waiting…</div></div>
+
+      <h3 style="margin-top:22px">Meeting chat</h3>
+      <div id="chat" class="chat"></div>
+      <div class="row">
+        <input id="chatInput" placeholder="Message the room…" disabled />
+        <button id="btnSend" disabled style="width:auto;min-width:90px">Send</button>
+      </div>
+    </section>
+  </div>
+</main>
+
+<audio id="remoteAudio" autoplay playsinline></audio>
+
+<script>
+const $ = (id) => document.getElementById(id);
+const state = {
+  token: null,
+  user: null,
+  meeting: null,
+  socket: null,
+  localStream: null,
+  peers: new Map(), // userId -> { pc, muted }
+  roomUsers: [],
+  muted: false,
+  analyser: null,
+  raf: null,
+};
+
+function setAuthStatus(html, ok) {
+  $('authStatus').innerHTML = html;
+  $('authStatus').className = 'status ' + (ok ? 'ok' : '');
+}
+function setCallStatus(html, isErr) {
+  $('callStatus').innerHTML = html;
+  $('callStatus').className = 'status ' + (isErr ? 'err' : '');
+}
+
+async function api(path, { method = 'GET', body, auth = true } = {}) {
+  const headers = { 'Content-Type': 'application/json' };
+  if (auth && state.token) headers.Authorization = `Bearer ${state.token}`;
+  const res = await fetch($('apiBase').value.replace(/\/$/, '') + path, {
+    method,
+    headers,
+    body: body ? JSON.stringify(body) : undefined,
+  });
+  const json = await res.json().catch(() => ({}));
+  if (!res.ok) throw new Error(json.error?.message || json.error || res.statusText);
+  return json.data ?? json;
+}
+
+async function signIn() {
+  try {
+    const data = await api('/auth/signin', {
+      method: 'POST',
+      auth: false,
+      body: { email: $('email').value.trim(), password: $('password').value },
+    });
+    state.token = data.session.access_token;
+    state.user = data.user;
+    localStorage.setItem('matucall_web_session', JSON.stringify({
+      token: state.token,
+      user: state.user,
+      expires_at: data.session.expires_at,
+    }));
+    setAuthStatus(`Signed in as <b>${state.user.full_name || state.user.email}</b>`, true);
+  } catch (e) {
+    setAuthStatus(`Sign in failed: ${e.message}`, false);
+  }
+}
+
+async function signUp() {
+  try {
+    const data = await api('/auth/signup', {
+      method: 'POST',
+      auth: false,
+      body: {
+        email: $('email').value.trim(),
+        password: $('password').value,
+        full_name: $('fullName').value.trim() || 'Web User',
+      },
+    });
+    state.token = data.session.access_token;
+    state.user = data.user;
+    localStorage.setItem('matucall_web_session', JSON.stringify({
+      token: state.token,
+      user: state.user,
+      expires_at: data.session.expires_at,
+    }));
+    setAuthStatus(`Account ready · <b>${state.user.full_name || state.user.email}</b>`, true);
+  } catch (e) {
+    setAuthStatus(`Sign up failed: ${e.message}`, false);
+  }
+}
+
+async function loadDevices() {
+  const devices = await navigator.mediaDevices.enumerateDevices();
+  const mics = devices.filter((d) => d.kind === 'audioinput');
+  const outs = devices.filter((d) => d.kind === 'audiooutput');
+  $('micSelect').innerHTML = mics.map((d) =>
+    `<option value="${d.deviceId}">${d.label || 'Microphone'}</option>`).join('');
+  $('speakerSelect').innerHTML = outs.map((d) =>
+    `<option value="${d.deviceId}">${d.label || 'Speaker'}</option>`).join('') ||
+    `<option value="">Default</option>`;
+}
+
+async function ensureLocalStream() {
+  const deviceId = $('micSelect').value || undefined;
+  if (state.localStream) {
+    state.localStream.getTracks().forEach((t) => t.stop());
+  }
+  state.localStream = await navigator.mediaDevices.getUserMedia({
+    audio: {
+      deviceId: deviceId ? { exact: deviceId } : undefined,
+      echoCancellation: true,
+      noiseSuppression: true,
+      autoGainControl: true,
+    },
+    video: false,
+  });
+  setupAnalyser(state.localStream);
+}
+
+function setupAnalyser(stream) {
+  const ctx = new AudioContext();
+  const src = ctx.createMediaStreamSource(stream);
+  const analyser = ctx.createAnalyser();
+  analyser.fftSize = 256;
+  src.connect(analyser);
+  state.analyser = analyser;
+  const data = new Uint8Array(analyser.frequencyBinCount);
+  const tick = () => {
+    analyser.getByteFrequencyData(data);
+    const avg = data.reduce((a, b) => a + b, 0) / data.length / 255;
+    const me = state.roomUsers.find((u) => u.userId === state.user?.id);
+    renderPeers(avg, me?.muted || state.muted);
+    state.raf = requestAnimationFrame(tick);
+  };
+  cancelAnimationFrame(state.raf);
+  tick();
+}
+
+function isCaller(remoteId) {
+  return state.user.id < remoteId;
+}
+
+async function ensurePeer(remoteUserId) {
+  if (state.peers.has(remoteUserId) || remoteUserId === state.user.id) return;
+  const pc = new RTCPeerConnection({
+    iceServers: [
+      { urls: 'stun:stun.l.google.com:19302' },
+      { urls: 'stun:stun1.l.google.com:19302' },
+    ],
+  });
+  state.localStream.getTracks().forEach((t) => pc.addTrack(t, state.localStream));
+  pc.onicecandidate = (ev) => {
+    if (!ev.candidate) return;
+    state.socket.emit('new-ice-candidate', {
+      roomId: state.meeting.room_code,
+      targetUserId: remoteUserId,
+      fromUserId: state.user.id,
+      candidate: ev.candidate.toJSON(),
+    });
+  };
+  pc.ontrack = (ev) => {
+    const audio = $('remoteAudio');
+    if (!audio.srcObject) audio.srcObject = new MediaStream();
+    ev.streams[0].getAudioTracks().forEach((t) => audio.srcObject.addTrack(t));
+    audio.play().catch(() => {});
+    const outId = $('speakerSelect').value;
+    if (outId && audio.setSinkId) audio.setSinkId(outId).catch(() => {});
+  };
+  state.peers.set(remoteUserId, { pc });
+
+  if (isCaller(remoteUserId)) {
+    const offer = await pc.createOffer({ offerToReceiveAudio: true });
+    await pc.setLocalDescription(offer);
+    state.socket.emit('audio-offer', {
+      roomId: state.meeting.room_code,
+      targetUserId: remoteUserId,
+      fromUserId: state.user.id,
+      sdp: pc.localDescription,
+    });
+  }
+}
+
+function renderPeers(localLevel = 0, localMuted = false) {
+  const users = state.roomUsers.length
+    ? state.roomUsers
+    : (state.user ? [{ userId: state.user.id, userName: state.user.full_name, muted: localMuted }] : []);
+  $('peers').innerHTML = users.map((u) => {
+    const me = u.userId === state.user?.id;
+    const speaking = me ? (!localMuted && localLevel > 0.08) : false;
+    const bars = [0,1,2,3,4].map((i) => {
+      const h = speaking ? Math.max(20, Math.min(100, (localLevel * 100 + i * 8))) : 22;
+      return `<span style="height:${h}%"></span>`;
+    }).join('');
+    return `<div class="peer">
+      <div class="dot ${speaking ? 'live' : ''}"></div>
+      <div style="flex:1">
+        <div><b>${u.userName || 'User'}${me ? ' (you)' : ''}</b></div>
+        <div style="color:var(--muted);font-size:.8rem">${u.muted || (me && localMuted) ? 'Muted' : (speaking ? 'Speaking' : 'Connected')}</div>
+      </div>
+      <div class="wave">${bars}</div>
+    </div>`;
+  }).join('') || '<div class="peer">Waiting…</div>';
+}
+
+async function joinMeeting() {
+  if (!state.token) return setCallStatus('Sign in first', true);
+  try {
+    setCallStatus('Joining…');
+    await loadDevices();
+    await ensureLocalStream();
+    const meeting = await api('/api/meetings/join-by-code', {
+      method: 'POST',
+      body: { room_code: $('roomCode').value.trim() },
+    });
+    state.meeting = meeting;
+    connectSocket();
+    $('btnJoin').disabled = true;
+    $('btnLeave').disabled = false;
+    $('btnMute').disabled = false;
+    $('chatInput').disabled = false;
+    $('btnSend').disabled = false;
+    setCallStatus(`In room <b>${meeting.room_code}</b> · ${meeting.title}`, false);
+    // load persisted chat
+    try {
+      const chat = await api(`/api/meetings/${meeting.id}/chat`);
+      const msgs = await api(`/api/chats/${chat.id}/messages`);
+      state.chatId = chat.id;
+      $('chat').innerHTML = (msgs || []).map((m) =>
+        `<div class="msg"><b>${m.sender_id === state.user.id ? 'You' : 'Peer'}</b>: ${escapeHtml(m.body)}</div>`
+      ).join('');
+    } catch (_) {}
+  } catch (e) {
+    setCallStatus(`Join failed: ${e.message}`, true);
+  }
+}
+
+function escapeHtml(s) {
+  return String(s).replace(/[&<>"']/g, (c) => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
+}
+
+function connectSocket() {
+  if (state.socket) state.socket.disconnect();
+  state.socket = io($('apiBase').value.replace(/\/$/, ''), {
+    transports: ['websocket'],
+    auth: { token: state.token },
+  });
+  state.socket.on('connect', () => {
+    state.socket.emit('join-room', {
+      roomId: state.meeting.room_code,
+      userId: state.user.id,
+      userName: state.user.full_name || state.user.email,
+      avatarUrl: state.user.avatar_url,
+    });
+  });
+  state.socket.on('room-users', async (users) => {
+    state.roomUsers = users;
+    renderPeers();
+    for (const u of users) await ensurePeer(u.userId);
+  });
+  state.socket.on('user-joined', async (user) => {
+    state.roomUsers = [...state.roomUsers.filter((u) => u.userId !== user.userId), user];
+    renderPeers();
+    await ensurePeer(user.userId);
+  });
+  state.socket.on('user-left', async (payload) => {
+    const id = payload.userId;
+    state.roomUsers = state.roomUsers.filter((u) => u.userId !== id);
+    const peer = state.peers.get(id);
+    if (peer) { peer.pc.close(); state.peers.delete(id); }
+    renderPeers();
+  });
+  state.socket.on('audio-offer', async (payload) => {
+    if (payload.targetUserId !== state.user.id) return;
+    await ensurePeer(payload.fromUserId);
+    const { pc } = state.peers.get(payload.fromUserId);
+    await pc.setRemoteDescription(payload.sdp);
+    const answer = await pc.createAnswer();
+    await pc.setLocalDescription(answer);
+    state.socket.emit('audio-answer', {
+      roomId: state.meeting.room_code,
+      targetUserId: payload.fromUserId,
+      fromUserId: state.user.id,
+      sdp: pc.localDescription,
+    });
+  });
+  state.socket.on('audio-answer', async (payload) => {
+    if (payload.targetUserId !== state.user.id) return;
+    const peer = state.peers.get(payload.fromUserId);
+    if (!peer) return;
+    await peer.pc.setRemoteDescription(payload.sdp);
+  });
+  state.socket.on('new-ice-candidate', async (payload) => {
+    if (payload.targetUserId !== state.user.id) return;
+    const peer = state.peers.get(payload.fromUserId);
+    if (!peer || !payload.candidate) return;
+    try { await peer.pc.addIceCandidate(payload.candidate); } catch (_) {}
+  });
+  state.socket.on('mute-changed', (payload) => {
+    state.roomUsers = state.roomUsers.map((u) =>
+      u.userId === payload.userId ? { ...u, muted: payload.muted } : u);
+    renderPeers();
+  });
+  state.socket.on('receive-message', (msg) => {
+    const box = $('chat');
+    box.innerHTML += `<div class="msg"><b>${msg.userName}</b>: ${escapeHtml(msg.body)}</div>`;
+    box.scrollTop = box.scrollHeight;
+  });
+}
+
+async function leaveMeeting() {
+  try {
+    if (state.socket && state.meeting) {
+      state.socket.emit('leave-room', {
+        roomId: state.meeting.room_code,
+        userId: state.user.id,
+      });
+      state.socket.disconnect();
+    }
+  } catch (_) {}
+  for (const { pc } of state.peers.values()) pc.close();
+  state.peers.clear();
+  state.localStream?.getTracks().forEach((t) => t.stop());
+  state.localStream = null;
+  state.meeting = null;
+  state.socket = null;
+  $('btnJoin').disabled = false;
+  $('btnLeave').disabled = true;
+  $('btnMute').disabled = true;
+  $('chatInput').disabled = true;
+  $('btnSend').disabled = true;
+  setCallStatus('Left room');
+  renderPeers(0, true);
+}
+
+function toggleMute() {
+  state.muted = !state.muted;
+  state.localStream?.getAudioTracks().forEach((t) => { t.enabled = !state.muted; });
+  state.socket?.emit('mute-changed', {
+    roomId: state.meeting.room_code,
+    userId: state.user.id,
+    muted: state.muted,
+  });
+  $('btnMute').textContent = state.muted ? 'Unmute' : 'Mute';
+}
+
+async function sendChat() {
+  const body = $('chatInput').value.trim();
+  if (!body || !state.meeting) return;
+  if (state.chatId) {
+    try {
+      await api(`/api/chats/${state.chatId}/messages`, { method: 'POST', body: { body } });
+    } catch (_) {}
+  }
+  state.socket?.emit('send-message', {
+    roomId: state.meeting.room_code,
+    userId: state.user.id,
+    userName: state.user.full_name || 'Web',
+    body,
+  });
+  $('chatInput').value = '';
+}
+
+$('btnSignIn').onclick = signIn;
+$('btnSignUp').onclick = signUp;
+$('btnJoin').onclick = joinMeeting;
+$('btnLeave').onclick = leaveMeeting;
+$('btnMute').onclick = toggleMute;
+$('btnSend').onclick = sendChat;
+$('micSelect').onchange = async () => {
+  if (state.meeting) await ensureLocalStream();
+};
+$('speakerSelect').onchange = async () => {
+  const audio = $('remoteAudio');
+  if (audio.setSinkId && $('speakerSelect').value) {
+    try { await audio.setSinkId($('speakerSelect').value); } catch (_) {}
+  }
+};
+
+(async function boot() {
+  try {
+    await navigator.mediaDevices.getUserMedia({ audio: true });
+    await loadDevices();
+  } catch (_) {}
+  const raw = localStorage.getItem('matucall_web_session');
+  if (raw) {
+    try {
+      const saved = JSON.parse(raw);
+      state.token = saved.token;
+      state.user = saved.user;
+      setAuthStatus(`Session restored · <b>${state.user.full_name || state.user.email}</b>`, true);
+    } catch (_) {}
+  }
+})();
+</script>
+</body>
+</html>

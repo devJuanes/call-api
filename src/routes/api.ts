@@ -32,6 +32,21 @@ apiRouter.get('/meetings', async (req, res) => {
   return res.json({ data: meetings });
 });
 
+apiRouter.post('/meetings/join-by-code', async (req, res) => {
+  const schema = z.object({ room_code: z.string().min(3) });
+  const parsed = schema.safeParse(req.body);
+  if (!parsed.success) return res.status(400).json({ error: parsed.error.flatten() });
+  try {
+    const found = await dataService.findMeetingByRoomCode(parsed.data.room_code.trim());
+    if (!found) return res.status(404).json({ error: 'Room not found' });
+    const full = await dataService.joinMeeting(found.id, req.user!.id);
+    if (!full) return res.status(404).json({ error: 'Meeting not found' });
+    return res.json({ data: full });
+  } catch (err) {
+    return res.status(500).json({ error: err instanceof Error ? err.message : 'Join failed' });
+  }
+});
+
 apiRouter.get('/meetings/:id', async (req, res) => {
   const meeting = await dataService.getMeeting(req.params.id);
   if (!meeting) return res.status(404).json({ error: 'Meeting not found' });
@@ -59,13 +74,27 @@ apiRouter.post('/meetings', async (req, res) => {
 
 apiRouter.post('/meetings/:id/join', async (req, res) => {
   try {
-    const meeting = await dataService.setMeetingLive(req.params.id);
-    if (!meeting) return res.status(404).json({ error: 'Meeting not found' });
-    const full = await dataService.getMeeting(req.params.id);
+    const full = await dataService.joinMeeting(req.params.id, req.user!.id);
+    if (!full) return res.status(404).json({ error: 'Meeting not found' });
     return res.json({ data: full });
   } catch (err) {
     return res.status(500).json({ error: err instanceof Error ? err.message : 'Join failed' });
   }
+});
+
+apiRouter.get('/meetings/:id/chat', async (req, res) => {
+  try {
+    const chat = await dataService.getChatByMeeting(req.params.id, req.user!.id);
+    if (!chat) return res.status(404).json({ error: 'Meeting not found' });
+    return res.json({ data: chat });
+  } catch (err) {
+    return res.status(500).json({ error: err instanceof Error ? err.message : 'Chat failed' });
+  }
+});
+
+apiRouter.get('/banners', async (_req, res) => {
+  const banners = await dataService.listBanners();
+  return res.json({ data: banners });
 });
 
 apiRouter.post('/meetings/:id/end', async (req, res) => {

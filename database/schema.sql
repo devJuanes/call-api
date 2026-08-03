@@ -95,3 +95,22 @@ CREATE TABLE IF NOT EXISTS notifications (
 );
 
 CREATE INDEX IF NOT EXISTS idx_notifications_user ON notifications(user_id);
+
+CREATE TABLE IF NOT EXISTS banners (
+  id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+  title TEXT NOT NULL,
+  subtitle TEXT NOT NULL DEFAULT '',
+  image_url TEXT,
+  cta_label TEXT,
+  cta_action TEXT NOT NULL DEFAULT 'start_meeting'
+    CHECK (cta_action IN ('start_meeting', 'open_url', 'none')),
+  link_url TEXT,
+  badge_label TEXT DEFAULT 'News',
+  accent_color TEXT DEFAULT '#FF6B8A',
+  sort_order INTEGER NOT NULL DEFAULT 0,
+  is_active BOOLEAN NOT NULL DEFAULT TRUE,
+  created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+  updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+);
+
+CREATE INDEX IF NOT EXISTS idx_banners_active ON banners (is_active, sort_order);
