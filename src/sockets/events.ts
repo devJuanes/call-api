@@ -8,6 +8,7 @@ export const SocketEvents = {
   AUDIO_ANSWER: 'audio-answer',
   NEW_ICE_CANDIDATE: 'new-ice-candidate',
   MUTE_CHANGED: 'mute-changed',
+  CAMERA_CHANGED: 'camera-changed',
   HOST_MUTE: 'host-mute',
   HOST_UNMUTE: 'host-unmute',
   KICK: 'kick',
@@ -45,6 +46,7 @@ export type RoomUser = {
   avatarUrl?: string;
   muted?: boolean;
   handRaised?: boolean;
+  cameraOn?: boolean;
   role?: 'host' | 'cohost' | 'participant';
   connectionState?: 'connecting' | 'connected' | 'reconnecting' | 'disconnected';
   joinedAt: string;

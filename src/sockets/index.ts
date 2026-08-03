@@ -67,6 +67,14 @@ export function registerSocketHandlers(io: Server) {
     );
 
     socket.on(
+      SocketEvents.CAMERA_CHANGED,
+      (payload: { roomId: string; userId: string; cameraOn: boolean }) => {
+        roomService.setCamera(payload.roomId, payload.userId, payload.cameraOn);
+        socket.to(payload.roomId).emit(SocketEvents.CAMERA_CHANGED, payload);
+      },
+    );
+
+    socket.on(
       SocketEvents.HOST_MUTE,
       (payload: { roomId: string; hostUserId: string; targetUserId: string }) => {
         if (!requireHost(payload.roomId, payload.hostUserId)) return;

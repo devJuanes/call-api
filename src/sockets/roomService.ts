@@ -18,6 +18,7 @@ export const roomService = {
       avatarUrl: payload.avatarUrl,
       muted: false,
       handRaised: false,
+      cameraOn: false,
       role,
       connectionState: 'connected',
       joinedAt: new Date().toISOString(),
@@ -65,6 +66,13 @@ export const roomService = {
     const user = rooms.get(roomId)?.get(userId);
     if (!user) return null;
     user.handRaised = raised;
+    return user;
+  },
+
+  setCamera(roomId: string, userId: string, cameraOn: boolean) {
+    const user = rooms.get(roomId)?.get(userId);
+    if (!user) return null;
+    user.cameraOn = cameraOn;
     return user;
   },
 
