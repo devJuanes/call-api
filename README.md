@@ -1,41 +1,53 @@
 # MatuCall API
 
-Realtime voice meetings API: **MatuDB** (auth + persistence) + **Socket.IO WebRTC signaling**.
+Realtime voice meetings API: **MatuDB** + **Socket.IO WebRTC signaling**.
 
-## Quick start (demo mode)
+## Production
+
+- URL: **https://call-api.matudb.com**
+- VPS path: `/root/apps/call-api`
+- PM2: `matucall-api` → `:4110`
 
 ```bash
-cd C:\MatuStudio\call-api
-cp .env.example .env   # already set MATUDB_DEMO=true
+curl https://call-api.matudb.com/health
+```
+
+## Local
+
+```bash
+cp .env.example .env
 npm install
 npm run dev
 ```
 
-- Health: http://localhost:4100/health
-- Demo login: `emma@matucall.app` / `matucall123`
+Health: http://localhost:4100/health
 
-## Real MatuDB
+## MatuDB
 
-1. Create a MatuDB project and run `database/schema.sql` in the SQL console.
+1. Run `database/schema.sql` (or `npm run db:schema`).
 2. Set in `.env`:
 
 ```env
 MATUDB_DEMO=false
 MATUDB_URL=https://db.matudb.com
 MATUDB_PROJECT_ID=...
-MATUDB_API_KEY=anon_...
+MATUDB_API_KEY=mb_...
 ```
 
-3. Restart `npm run dev`.
+## Deploy
+
+```powershell
+$env:DEPLOY_SSH_PASSWORD = "..."
+python deploy/deploy-remote.py
+```
+
+See `deploy/DEPLOY.md`.
 
 ## Flutter
 
 ```bash
-cd C:\dev\matucall
-flutter run --dart-define=CALL_API_URL=http://YOUR_LAN_IP:4100
+flutter run --dart-define=CALL_API_URL=https://call-api.matudb.com
 ```
-
-Android physical device must use your PC LAN IP (not localhost). Emulator can use `http://10.0.2.2:4100`.
 
 ## Endpoints
 
