@@ -80,7 +80,8 @@ export const dataService = {
       updated_at: nowIso(),
     };
     if (existing.data) {
-      const { data, error } = await db.from('profiles').update(payload).eq('id', input.id);
+      // MatuDB: filters before mutation (.eq().update()), unlike Supabase.
+      const { data, error } = await db.from('profiles').eq('id', input.id).update(payload);
       if (error) throw new Error(error.message);
       return mapProfile(firstRow(data as DbRow | DbRow[], payload)!);
     }
@@ -260,8 +261,8 @@ export const dataService = {
     }
     const { data, error } = await getMatuDb()
       .from('meetings')
-      .update({ status: 'live', started_at: nowIso(), updated_at: nowIso() })
-      .eq('id', meetingId);
+      .eq('id', meetingId)
+      .update({ status: 'live', started_at: nowIso(), updated_at: nowIso() });
     if (error) throw new Error(error.message);
     return mapMeeting(firstRow(data as DbRow | DbRow[])!);
   },
@@ -276,8 +277,8 @@ export const dataService = {
     }
     const { data, error } = await getMatuDb()
       .from('meetings')
-      .update({ status: 'ended', ended_at: nowIso(), updated_at: nowIso() })
-      .eq('id', meetingId);
+      .eq('id', meetingId)
+      .update({ status: 'ended', ended_at: nowIso(), updated_at: nowIso() });
     if (error) throw new Error(error.message);
     return mapMeeting(firstRow(data as DbRow | DbRow[])!);
   },
@@ -368,7 +369,7 @@ export const dataService = {
     }
     const { data, error } = await getMatuDb().from('chat_messages').insert(msg);
     if (error) throw new Error(error.message);
-    await getMatuDb().from('chat_threads').update({ updated_at: nowIso() }).eq('id', threadId);
+    await getMatuDb().from('chat_threads').eq('id', threadId).update({ updated_at: nowIso() });
     return firstRow(data as DbRow | DbRow[], msg) as ChatMessage;
   },
 
@@ -399,8 +400,8 @@ export const dataService = {
       );
       return;
     }
-    const q = getMatuDb().from('notifications').update({ is_read: true }).eq('user_id', userId);
-    if (id) await q.eq('id', id);
-    else await q;
+    let q = getMatuDb().from('notifications').eq('user_id', userId);
+    if (id) q = q.eq('id', id);
+    await q.update({ is_read: true });
   },
 };

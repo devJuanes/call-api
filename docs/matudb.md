@@ -87,11 +87,11 @@ const { data, error } = await db.from('products').insert({ name: 'Widget', price
 // INSERT multiple
 const { data } = await db.from('products').insert([{ name: 'A' }, { name: 'B' }]);
 
-// UPDATE
-const { data } = await db.from('users').update({ name: 'Alice' }).eq('id', userId);
+// UPDATE — filters BEFORE update (MatuDB; not Supabase order)
+const { data } = await db.from('users').eq('id', userId).update({ name: 'Alice' });
 
-// DELETE
-const { data } = await db.from('orders').delete().eq('id', orderId);
+// DELETE — filters BEFORE delete
+const { data } = await db.from('orders').eq('id', orderId).delete();
 db.auth — Authentication
 // Sign up
 const { data, error } = await db.auth.signUp({ email, password });
