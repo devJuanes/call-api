@@ -264,9 +264,21 @@ export function registerSocketHandlers(io: Server) {
         roomId: string;
         userId: string;
         connectionState: 'connecting' | 'connected' | 'reconnecting' | 'disconnected';
+        quality?: string;
       }) => {
         roomService.setConnectionState(payload.roomId, payload.userId, payload.connectionState);
+        if (payload.quality) {
+          roomService.setQuality(payload.roomId, payload.userId, payload.quality);
+        }
         socket.to(payload.roomId).emit(SocketEvents.CONNECTION_STATE, payload);
+      },
+    );
+
+    socket.on(
+      SocketEvents.SPEAKING,
+      (payload: { roomId: string; userId: string; speaking: boolean }) => {
+        roomService.setSpeaking(payload.roomId, payload.userId, payload.speaking);
+        socket.to(payload.roomId).emit(SocketEvents.SPEAKING, payload);
       },
     );
 

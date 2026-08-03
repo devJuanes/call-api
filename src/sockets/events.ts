@@ -47,6 +47,8 @@ export type RoomUser = {
   muted?: boolean;
   handRaised?: boolean;
   cameraOn?: boolean;
+  speaking?: boolean;
+  quality?: string;
   role?: 'host' | 'cohost' | 'participant';
   connectionState?: 'connecting' | 'connected' | 'reconnecting' | 'disconnected';
   joinedAt: string;

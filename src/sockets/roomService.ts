@@ -76,6 +76,20 @@ export const roomService = {
     return user;
   },
 
+  setSpeaking(roomId: string, userId: string, speaking: boolean) {
+    const user = rooms.get(roomId)?.get(userId);
+    if (!user) return null;
+    user.speaking = speaking;
+    return user;
+  },
+
+  setQuality(roomId: string, userId: string, quality: string) {
+    const user = rooms.get(roomId)?.get(userId);
+    if (!user) return null;
+    user.quality = quality;
+    return user;
+  },
+
   setRole(roomId: string, userId: string, role: RoomUser['role']) {
     const user = rooms.get(roomId)?.get(userId);
     if (!user) return null;
