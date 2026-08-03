@@ -38,6 +38,9 @@ function mapMeeting(row: DbRow): Meeting {
     started_at: (row.started_at as string | null) ?? null,
     ended_at: (row.ended_at as string | null) ?? null,
     created_by: (row.created_by as string | null) ?? null,
+    waiting_room_enabled: Boolean(row.waiting_room_enabled),
+    is_locked: Boolean(row.is_locked),
+    invite_url: (row.invite_url as string | null) ?? null,
     created_at: String(row.created_at ?? nowIso()),
     updated_at: String(row.updated_at ?? nowIso()),
   };
@@ -172,16 +175,18 @@ export const dataService = {
     tone: Meeting['tone'];
     icon_type: Meeting['icon_type'];
     created_by: string;
+    waiting_room_enabled?: boolean;
   }): Promise<
     Meeting & {
       participants: Array<Profile & { role: string }>;
       chat_thread_id?: string | null;
     }
   > {
+    const code = roomCode();
     const meeting: Meeting = {
       id: randomUUID(),
       title: input.title,
-      room_code: roomCode(),
+      room_code: code,
       status: 'scheduled',
       tone: input.tone,
       icon_type: input.icon_type,
@@ -189,6 +194,9 @@ export const dataService = {
       started_at: null,
       ended_at: null,
       created_by: input.created_by,
+      waiting_room_enabled: Boolean(input.waiting_room_enabled),
+      is_locked: false,
+      invite_url: `${env.INVITE_BASE_URL}/${code}`,
       created_at: nowIso(),
       updated_at: nowIso(),
     };
@@ -499,39 +507,39 @@ export const dataService = {
     const defaults = [
       {
         id: 'default-1',
-        title: 'Connect\nCollaborate\ncreate',
-        subtitle: 'Start a voice meeting with your team in seconds',
+        title: 'Conecta\nColabora\ncrea',
+        subtitle: 'Inicia una reunión de voz con tu equipo en segundos',
         image_url: 'https://images.unsplash.com/photo-1500530855697-b586d89ba3ee?auto=format&fit=crop&w=1200&q=80',
-        cta_label: 'Start a Meeting',
+        cta_label: 'Iniciar reunión',
         cta_action: 'start_meeting',
         link_url: null as string | null,
-        badge_label: 'Live Now',
+        badge_label: 'En vivo',
         accent_color: '#FF8FA3',
         sort_order: 0,
         is_active: true,
       },
       {
         id: 'default-2',
-        title: 'Share your\nroom code',
-        subtitle: 'Invite anyone with the room ID — they join from phone or web',
+        title: 'Comparte tu\ncódigo de sala',
+        subtitle: 'Invita a cualquiera con el código — entran desde el móvil o la web',
         image_url: 'https://images.unsplash.com/photo-1522071820081-009f0129c71c?auto=format&fit=crop&w=1200&q=80',
-        cta_label: 'View meetings',
+        cta_label: 'Ver reuniones',
         cta_action: 'none',
         link_url: null,
-        badge_label: 'How to',
+        badge_label: 'Cómo hacer',
         accent_color: '#7EB6FF',
         sort_order: 1,
         is_active: true,
       },
       {
         id: 'default-3',
-        title: 'Group chat\nin every call',
-        subtitle: 'Messages stay with the meeting so the whole room stays aligned',
+        title: 'Chat grupal\nen cada llamada',
+        subtitle: 'Los mensajes quedan con la reunión para que todos estén alineados',
         image_url: 'https://images.unsplash.com/photo-1556761175-5973dc0f32e7?auto=format&fit=crop&w=1200&q=80',
-        cta_label: 'Open chats',
+        cta_label: 'Abrir chats',
         cta_action: 'none',
         link_url: null,
-        badge_label: 'Tip',
+        badge_label: 'Consejo',
         accent_color: '#6FCF97',
         sort_order: 2,
         is_active: true,
@@ -593,22 +601,37 @@ export const dataService = {
       .select('*')
       .eq('thread_id', threadId)
       .order('created_at', { ascending: true });
-    return asArray(data as DbRow[]).map((row) => ({
-      id: String(row.id),
-      thread_id: String(row.thread_id),
-      sender_id: String(row.sender_id),
-      body: String(row.body),
-      created_at: String(row.created_at),
-    }));
+    return asArray(data as DbRow[])
+      .filter((row) => !row.deleted_at)
+      .map((row) => ({
+        id: String(row.id),
+        thread_id: String(row.thread_id),
+        sender_id: String(row.sender_id),
+        body: String(row.body),
+        created_at: String(row.created_at),
+        reply_to_id: (row.reply_to_id as string | null) ?? null,
+        edited_at: (row.edited_at as string | null) ?? null,
+        deleted_at: (row.deleted_at as string | null) ?? null,
+        read_by: Array.isArray(row.read_by) ? (row.read_by as string[]) : [],
+      }));
   },
 
-  async sendMessage(threadId: string, senderId: string, body: string): Promise<ChatMessage> {
+  async sendMessage(
+    threadId: string,
+    senderId: string,
+    body: string,
+    replyToId?: string,
+  ): Promise<ChatMessage> {
     const msg: ChatMessage = {
       id: randomUUID(),
       thread_id: threadId,
       sender_id: senderId,
       body,
       created_at: nowIso(),
+      reply_to_id: replyToId ?? null,
+      edited_at: null,
+      deleted_at: null,
+      read_by: [senderId],
     };
     if (env.demoMode) {
       const list = memoryStore.messages.get(threadId) ?? [];
@@ -624,6 +647,132 @@ export const dataService = {
     if (error) throw new Error(error.message);
     await getMatuDb().from('chat_threads').eq('id', threadId).update({ updated_at: nowIso() });
     return firstRow(data as DbRow | DbRow[], msg) as ChatMessage;
+  },
+
+  async editMessage(messageId: string, userId: string, body: string) {
+    if (env.demoMode) {
+      for (const [threadId, list] of memoryStore.messages) {
+        const idx = list.findIndex((m) => m.id === messageId && m.sender_id === userId);
+        if (idx >= 0) {
+          list[idx] = { ...list[idx], body, edited_at: nowIso() };
+          memoryStore.messages.set(threadId, list);
+          return list[idx];
+        }
+      }
+      return null;
+    }
+    const { data } = await getMatuDb().from('chat_messages').select('*').eq('id', messageId).single();
+    if (!data || String((data as DbRow).sender_id) !== userId) return null;
+    const { data: updated, error } = await getMatuDb()
+      .from('chat_messages')
+      .eq('id', messageId)
+      .update({ body, edited_at: nowIso() });
+    if (error) throw new Error(error.message);
+    return firstRow(updated as DbRow | DbRow[]) as ChatMessage;
+  },
+
+  async deleteMessage(messageId: string, userId: string) {
+    if (env.demoMode) {
+      for (const [threadId, list] of memoryStore.messages) {
+        const idx = list.findIndex((m) => m.id === messageId && m.sender_id === userId);
+        if (idx >= 0) {
+          list[idx] = { ...list[idx], deleted_at: nowIso(), body: '' };
+          memoryStore.messages.set(threadId, list);
+          return true;
+        }
+      }
+      return false;
+    }
+    const { data } = await getMatuDb().from('chat_messages').select('*').eq('id', messageId).single();
+    if (!data || String((data as DbRow).sender_id) !== userId) return false;
+    await getMatuDb()
+      .from('chat_messages')
+      .eq('id', messageId)
+      .update({ deleted_at: nowIso(), body: '' });
+    return true;
+  },
+
+  async markMessageRead(messageId: string, userId: string) {
+    if (env.demoMode) return;
+    const { data } = await getMatuDb().from('chat_messages').select('*').eq('id', messageId).single();
+    if (!data) return;
+    const readBy = Array.isArray((data as DbRow).read_by)
+      ? ([...(data as DbRow).read_by as string[]])
+      : [];
+    if (!readBy.includes(userId)) readBy.push(userId);
+    await getMatuDb().from('chat_messages').eq('id', messageId).update({ read_by: readBy });
+  },
+
+  async updateMeetingSettings(
+    meetingId: string,
+    userId: string,
+    patch: { waiting_room_enabled?: boolean; is_locked?: boolean },
+  ) {
+    const meeting = await this.getMeeting(meetingId);
+    if (!meeting || meeting.created_by !== userId) return null;
+    if (env.demoMode) {
+      const m = memoryStore.meetings.get(meetingId);
+      if (!m) return null;
+      const updated = {
+        ...m,
+        waiting_room_enabled: patch.waiting_room_enabled ?? m.waiting_room_enabled,
+        is_locked: patch.is_locked ?? m.is_locked,
+        updated_at: nowIso(),
+      };
+      memoryStore.meetings.set(meetingId, updated);
+      return this.getMeeting(meetingId);
+    }
+    await getMatuDb()
+      .from('meetings')
+      .eq('id', meetingId)
+      .update({ ...patch, updated_at: nowIso() });
+    return this.getMeeting(meetingId);
+  },
+
+  async requestLobby(meetingId: string, userId: string) {
+    if (env.demoMode) {
+      return { status: 'waiting' as const, meeting_id: meetingId, user_id: userId };
+    }
+    const { data: existing } = await getMatuDb()
+      .from('meeting_lobby')
+      .select('*')
+      .eq('meeting_id', meetingId)
+      .eq('user_id', userId);
+    const found = firstRow(existing as DbRow | DbRow[]);
+    if (found) {
+      return {
+        status: String(found.status) as 'waiting' | 'admitted' | 'rejected',
+        meeting_id: meetingId,
+        user_id: userId,
+      };
+    }
+    await getMatuDb().from('meeting_lobby').insert({
+      id: randomUUID(),
+      meeting_id: meetingId,
+      user_id: userId,
+      status: 'waiting',
+      requested_at: nowIso(),
+    });
+    return { status: 'waiting' as const, meeting_id: meetingId, user_id: userId };
+  },
+
+  async resolveLobby(
+    meetingId: string,
+    hostId: string,
+    targetUserId: string,
+    status: 'admitted' | 'rejected',
+  ) {
+    const meeting = await this.getMeeting(meetingId);
+    if (!meeting || meeting.created_by !== hostId) return null;
+    if (env.demoMode) {
+      return { status, meeting_id: meetingId, user_id: targetUserId };
+    }
+    await getMatuDb()
+      .from('meeting_lobby')
+      .eq('meeting_id', meetingId)
+      .eq('user_id', targetUserId)
+      .update({ status, resolved_at: nowIso() });
+    return { status, meeting_id: meetingId, user_id: targetUserId };
   },
 
   async listNotifications(userId: string): Promise<Notification[]> {

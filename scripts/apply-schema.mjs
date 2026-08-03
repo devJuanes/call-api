@@ -48,3 +48,25 @@ if (probe.error) {
 }
 
 console.log('MatuCall schema ready on MatuDB.');
+
+// Incremental alters for existing projects
+try {
+  const migratePath = resolve('database/migrate_v2.sql');
+  const migrateSql = readFileSync(migratePath, 'utf8');
+  const migrateStatements = migrateSql
+    .split(/;\s*\n/)
+    .map((s) => s.trim())
+    .filter((s) => s.length > 0 && !s.startsWith('--'));
+  console.log(`Applying ${migrateStatements.length} migrate_v2 statements…`);
+  for (const [i, statement] of migrateStatements.entries()) {
+    const query = statement.endsWith(';') ? statement : `${statement};`;
+    const { error } = await db.rpc(query);
+    if (error) {
+      console.warn(`⚠ migrate [${i + 1}] ${error.message}`);
+    } else {
+      console.log(`✔ migrate [${i + 1}/${migrateStatements.length}]`);
+    }
+  }
+} catch (err) {
+  console.warn('migrate_v2 skipped:', err);
+}

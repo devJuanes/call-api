@@ -25,6 +25,9 @@ export type Meeting = {
   started_at: string | null;
   ended_at: string | null;
   created_by: string | null;
+  waiting_room_enabled: boolean;
+  is_locked: boolean;
+  invite_url: string | null;
   created_at: string;
   updated_at: string;
 };
@@ -53,6 +56,10 @@ export type ChatMessage = {
   sender_id: string;
   body: string;
   created_at: string;
+  reply_to_id?: string | null;
+  edited_at?: string | null;
+  deleted_at?: string | null;
+  read_by?: string[];
 };
 
 export type Notification = {
@@ -166,6 +173,9 @@ function seed() {
     started_at: nowIso(),
     ended_at: null,
     created_by: emmaId,
+    waiting_room_enabled: false,
+    is_locked: false,
+    invite_url: null,
     created_at: nowIso(),
     updated_at: nowIso(),
   };

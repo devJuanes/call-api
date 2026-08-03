@@ -34,6 +34,9 @@ CREATE TABLE IF NOT EXISTS meetings (
   started_at TIMESTAMPTZ,
   ended_at TIMESTAMPTZ,
   created_by UUID REFERENCES profiles(id) ON DELETE SET NULL,
+  waiting_room_enabled BOOLEAN NOT NULL DEFAULT FALSE,
+  is_locked BOOLEAN NOT NULL DEFAULT FALSE,
+  invite_url TEXT,
   created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
   updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
 );
@@ -47,14 +50,31 @@ CREATE TABLE IF NOT EXISTS meeting_participants (
   meeting_id UUID NOT NULL REFERENCES meetings(id) ON DELETE CASCADE,
   user_id UUID NOT NULL REFERENCES profiles(id) ON DELETE CASCADE,
   role TEXT NOT NULL DEFAULT 'participant'
-    CHECK (role IN ('host', 'participant')),
+    CHECK (role IN ('host', 'cohost', 'participant')),
   joined_at TIMESTAMPTZ,
   left_at TIMESTAMPTZ,
+  is_muted_by_host BOOLEAN NOT NULL DEFAULT FALSE,
+  hand_raised BOOLEAN NOT NULL DEFAULT FALSE,
+  connection_state TEXT NOT NULL DEFAULT 'connected'
+    CHECK (connection_state IN ('connecting', 'connected', 'reconnecting', 'disconnected')),
   UNIQUE(meeting_id, user_id)
 );
 
 CREATE INDEX IF NOT EXISTS idx_meeting_participants_meeting ON meeting_participants(meeting_id);
 CREATE INDEX IF NOT EXISTS idx_meeting_participants_user ON meeting_participants(user_id);
+
+CREATE TABLE IF NOT EXISTS meeting_lobby (
+  id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+  meeting_id UUID NOT NULL REFERENCES meetings(id) ON DELETE CASCADE,
+  user_id UUID NOT NULL REFERENCES profiles(id) ON DELETE CASCADE,
+  status TEXT NOT NULL DEFAULT 'waiting'
+    CHECK (status IN ('waiting', 'admitted', 'rejected')),
+  requested_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+  resolved_at TIMESTAMPTZ,
+  UNIQUE(meeting_id, user_id)
+);
+
+CREATE INDEX IF NOT EXISTS idx_meeting_lobby_meeting ON meeting_lobby(meeting_id);
 
 CREATE TABLE IF NOT EXISTS chat_threads (
   id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
@@ -78,6 +98,10 @@ CREATE TABLE IF NOT EXISTS chat_messages (
   thread_id UUID NOT NULL REFERENCES chat_threads(id) ON DELETE CASCADE,
   sender_id UUID NOT NULL REFERENCES profiles(id) ON DELETE CASCADE,
   body TEXT NOT NULL,
+  reply_to_id UUID REFERENCES chat_messages(id) ON DELETE SET NULL,
+  edited_at TIMESTAMPTZ,
+  deleted_at TIMESTAMPTZ,
+  read_by JSONB NOT NULL DEFAULT '[]'::jsonb,
   created_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
 );
 

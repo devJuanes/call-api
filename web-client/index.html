@@ -97,52 +97,52 @@
 </head>
 <body>
 <main>
-  <h1>MatuCall Web Client</h1>
-  <p class="sub">Local HTML → production API <code>https://call.api.matubyte.com</code>. Use this as a second participant with your phone.</p>
+  <h1>MatuCall — Cliente web</h1>
+  <p class="sub">HTML local → API de producción <code>https://call.api.matubyte.com</code>. Úsalo como segundo participante con tu teléfono.</p>
 
   <div class="grid">
     <section class="card">
-      <h3>1. Auth</h3>
+      <h3>1. Acceso</h3>
       <label>API base</label>
       <input id="apiBase" value="https://call.api.matubyte.com" />
-      <label>Email</label>
+      <label>Correo electrónico</label>
       <input id="email" type="email" autocomplete="username" placeholder="tu correo" />
-      <label>Password</label>
+      <label>Contraseña</label>
       <input id="password" type="password" autocomplete="current-password" placeholder="tu clave" />
       <div class="row">
-        <button id="btnSignIn">Sign in</button>
-        <button class="secondary" id="btnSignUp">Sign up</button>
+        <button id="btnSignIn">Iniciar sesión</button>
+        <button class="secondary" id="btnSignUp">Crear cuenta</button>
       </div>
-      <label>Full name (sign up)</label>
+      <label>Nombre completo (registro)</label>
       <input id="fullName" placeholder="Tu nombre" />
-      <div id="authStatus" class="status">Not signed in</div>
+      <div id="authStatus" class="status">Sin sesión</div>
 
-      <h3 style="margin-top:22px">2. Join room</h3>
-      <label>Room code</label>
+      <h3 style="margin-top:22px">2. Unirse a la sala</h3>
+      <label>Código de sala</label>
       <input id="roomCode" placeholder="ej. ABC123" />
       <div class="row">
-        <button id="btnJoin">Join meeting</button>
-        <button class="danger" id="btnLeave" disabled>Leave</button>
+        <button id="btnJoin">Unirse</button>
+        <button class="danger" id="btnLeave" disabled>Salir</button>
       </div>
-      <div id="callStatus" class="status">Idle</div>
+      <div id="callStatus" class="status">Inactivo</div>
 
-      <h3 style="margin-top:22px">3. Devices</h3>
-      <label>Microphone</label>
+      <h3 style="margin-top:22px">3. Dispositivos</h3>
+      <label>Micrófono</label>
       <select id="micSelect"></select>
-      <label>Speaker / output</label>
+      <label>Altavoz / salida</label>
       <select id="speakerSelect"></select>
-      <button class="secondary" id="btnMute" disabled>Mute</button>
+      <button class="secondary" id="btnMute" disabled>Silenciar</button>
     </section>
 
     <section class="card">
-      <h3>Live participants</h3>
-      <div id="peers" class="peers"><div class="peer">Waiting…</div></div>
+      <h3>Participantes en vivo</h3>
+      <div id="peers" class="peers"><div class="peer">Esperando…</div></div>
 
-      <h3 style="margin-top:22px">Meeting chat</h3>
+      <h3 style="margin-top:22px">Chat de la reunión</h3>
       <div id="chat" class="chat"></div>
       <div class="row">
-        <input id="chatInput" placeholder="Message the room…" disabled />
-        <button id="btnSend" disabled style="width:auto;min-width:90px">Send</button>
+        <input id="chatInput" placeholder="Mensaje a la sala…" disabled />
+        <button id="btnSend" disabled style="width:auto;min-width:90px">Enviar</button>
       </div>
     </section>
   </div>
@@ -214,9 +214,9 @@ async function signIn() {
       user: state.user,
       expires_at: data.session.expires_at,
     }));
-    setAuthStatus(`Signed in as <b>${state.user.full_name || state.user.email}</b>`, true);
+    setAuthStatus(`Sesión iniciada como <b>${state.user.full_name || state.user.email}</b>`, true);
   } catch (e) {
-    setAuthStatus(`Sign in failed: ${e.message}`, false);
+    setAuthStatus(`Error al iniciar sesión: ${e.message}`, false);
   }
 }
 
@@ -228,7 +228,7 @@ async function signUp() {
       body: {
         email: $('email').value.trim(),
         password: $('password').value,
-        full_name: $('fullName').value.trim() || 'Web User',
+        full_name: $('fullName').value.trim() || 'Usuario web',
       },
     });
     state.token = data.session.access_token;
@@ -238,9 +238,9 @@ async function signUp() {
       user: state.user,
       expires_at: data.session.expires_at,
     }));
-    setAuthStatus(`Account ready · <b>${state.user.full_name || state.user.email}</b>`, true);
+    setAuthStatus(`Cuenta lista · <b>${state.user.full_name || state.user.email}</b>`, true);
   } catch (e) {
-    setAuthStatus(`Sign up failed: ${e.message}`, false);
+    setAuthStatus(`Error al registrarse: ${e.message}`, false);
   }
 }
 
@@ -358,9 +358,9 @@ function renderPeers(localLevel = 0, localMuted = false) {
 }
 
 async function joinMeeting() {
-  if (!state.token) return setCallStatus('Sign in first', true);
+  if (!state.token) return setCallStatus('Inicia sesión primero', true);
   try {
-    setCallStatus('Joining…');
+    setCallStatus('Uniéndose…');
     await loadDevices();
     await ensureLocalStream();
     const meeting = await api('/api/meetings/join-by-code', {
@@ -374,7 +374,7 @@ async function joinMeeting() {
     $('btnMute').disabled = false;
     $('chatInput').disabled = false;
     $('btnSend').disabled = false;
-    setCallStatus(`In room <b>${meeting.room_code}</b> · ${meeting.title}`, false);
+    setCallStatus(`En la sala <b>${meeting.room_code}</b> · ${meeting.title}`, false);
     // load persisted chat
     try {
       const chat = await api(`/api/meetings/${meeting.id}/chat`);
