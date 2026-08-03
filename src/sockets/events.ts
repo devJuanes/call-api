@@ -26,6 +26,7 @@ export const SocketEvents = {
   REJECTED: 'rejected',
   KICKED: 'kicked',
   MEETING_LOCKED: 'meeting-locked',
+  MEETING_ENDED: 'meeting-ended',
   HOST_CHANGED: 'host-changed',
   SEND_MESSAGE: 'send-message',
   RECEIVE_MESSAGE: 'receive-message',

@@ -3,6 +3,7 @@ import { Server } from 'socket.io';
 import { createApp } from './app.js';
 import { env } from './config.js';
 import { registerSocketHandlers } from './sockets/index.js';
+import { setIo } from './sockets/ioRegistry.js';
 import { startRealtimeBridge } from './sockets/realtimeBridge.js';
 
 const app = createApp();
@@ -22,6 +23,7 @@ const io = new Server(httpServer, {
   allowEIO3: true,
 });
 
+setIo(io);
 registerSocketHandlers(io);
 startRealtimeBridge(io);
 

@@ -360,6 +360,9 @@ export const dataService = {
   async joinMeeting(meetingId: string, userId: string) {
     const meeting = await this.getMeeting(meetingId);
     if (!meeting) return null;
+    if (meeting.status === 'ended' || meeting.status === 'cancelled') {
+      throw new Error('Esta reunión ya finalizó');
+    }
     await this.setMeetingLive(meetingId);
     const isHost = meeting.created_by === userId;
     await this.addParticipant(meetingId, userId, isHost ? 'host' : 'participant');

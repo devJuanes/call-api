@@ -3,6 +3,9 @@ import { z } from 'zod';
 import { env } from '../config.js';
 import { requireAuth } from '../middleware/auth.js';
 import { dataService } from '../services/dataService.js';
+import { SocketEvents } from '../sockets/events.js';
+import { getIo } from '../sockets/ioRegistry.js';
+import { roomService } from '../sockets/roomService.js';
 
 export const apiRouter = Router();
 
@@ -101,6 +104,9 @@ apiRouter.post('/meetings/:id/join', async (req, res) => {
   try {
     const meeting = await dataService.getMeeting(req.params.id);
     if (!meeting) return res.status(404).json({ error: 'Reunión no encontrada' });
+    if (meeting.status === 'ended' || meeting.status === 'cancelled') {
+      return res.status(410).json({ error: 'Esta reunión ya finalizó' });
+    }
     if (meeting.is_locked && meeting.created_by !== req.user!.id) {
       return res.status(403).json({ error: 'La reunión está bloqueada' });
     }
@@ -158,8 +164,26 @@ apiRouter.get('/banners', async (_req, res) => {
 
 apiRouter.post('/meetings/:id/end', async (req, res) => {
   try {
+    const existing = await dataService.getMeeting(req.params.id);
+    if (!existing) return res.status(404).json({ error: 'Reunión no encontrada' });
+    if (existing.created_by && existing.created_by !== req.user!.id) {
+      const isHost = roomService.isHost(existing.room_code, req.user!.id);
+      if (!isHost) {
+        return res.status(403).json({ error: 'Solo el anfitrión puede finalizar la reunión' });
+      }
+    }
     const meeting = await dataService.endMeeting(req.params.id);
     if (!meeting) return res.status(404).json({ error: 'Reunión no encontrada' });
+    const roomId = meeting.room_code || existing.room_code;
+    const io = getIo();
+    if (io && roomId) {
+      io.to(roomId).emit(SocketEvents.MEETING_ENDED, {
+        meetingId: meeting.id,
+        roomId,
+        endedBy: req.user!.id,
+      });
+      roomService.clearRoom(roomId);
+    }
     return res.json({ data: meeting });
   } catch (err) {
     return res.status(500).json({ error: err instanceof Error ? err.message : 'No se pudo finalizar' });

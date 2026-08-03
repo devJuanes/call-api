@@ -102,4 +102,10 @@ export const roomService = {
   isLocked(roomId: string) {
     return locked.get(roomId) === true;
   },
+
+  clearRoom(roomId: string) {
+    rooms.delete(roomId);
+    hosts.delete(roomId);
+    locked.delete(roomId);
+  },
 };
