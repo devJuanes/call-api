@@ -4,12 +4,12 @@ Realtime voice meetings API: **MatuDB** + **Socket.IO WebRTC signaling**.
 
 ## Production
 
-- URL: **https://call-api.matudb.com**
+- URL: **https://call.api.matudb.com**
 - VPS path: `/root/apps/call-api`
 - PM2: `matucall-api` → `:4110`
 
 ```bash
-curl https://call-api.matudb.com/health
+curl https://call.api.matudb.com/health
 ```
 
 ## Local
@@ -46,7 +46,7 @@ See `deploy/DEPLOY.md`.
 ## Flutter
 
 ```bash
-flutter run --dart-define=CALL_API_URL=https://call-api.matudb.com
+flutter run --dart-define=CALL_API_URL=https://call.api.matudb.com
 ```
 
 ## Endpoints

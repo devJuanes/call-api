@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Despliega MatuCall API en el VPS (call-api.matudb.com) → /root/apps/call-api."""
+"""Despliega MatuCall API en el VPS (call.api.matudb.com) → /root/apps/call-api."""
 from __future__ import annotations
 
 import io
@@ -15,8 +15,8 @@ import paramiko
 HOST = os.environ.get("DEPLOY_SSH_HOST", "13.140.160.248")
 USER = os.environ.get("DEPLOY_SSH_USER", "root")
 PASSWORD = os.environ.get("DEPLOY_SSH_PASSWORD", "")
-SITE = "https://call-api.matudb.com"
-DOMAIN = "call-api.matudb.com"
+SITE = "https://call.api.matudb.com"
+DOMAIN = "call.api.matudb.com"
 REMOTE_DIR = "/root/apps/call-api"
 LOCAL_ROOT = Path(__file__).resolve().parents[1]
 SKIP_DIRS = {".git", "node_modules", "dist", ".cursor", ".dart_tool"}
@@ -44,7 +44,7 @@ def run(client: paramiko.SSHClient, cmd: str, timeout: int = 900) -> tuple[int, 
 def production_env(local: dict[str, str]) -> str:
     return "\n".join(
         [
-            "# MatuCall API — producción (call-api.matudb.com)",
+            "# MatuCall API — producción (call.api.matudb.com)",
             "MATUDB_DEMO=false",
             "PORT=4110",
             "NODE_ENV=production",
@@ -186,8 +186,8 @@ def main() -> int:
         "}\n"
         "EOF\n"
         f"ln -sfn /etc/nginx/sites-available/{DOMAIN} /etc/nginx/sites-enabled/{DOMAIN}\n"
-        # remove old site if present
-        "rm -f /etc/nginx/sites-enabled/call.api.matudb.com /etc/nginx/sites-available/call.api.matudb.com || true\n",
+        # remove old alternate site if present
+        "rm -f /etc/nginx/sites-enabled/call-api.matudb.com /etc/nginx/sites-available/call-api.matudb.com || true\n",
     )
     run(client, "nginx -t && systemctl reload nginx")
 

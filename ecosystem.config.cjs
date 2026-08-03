@@ -1,6 +1,6 @@
 /**
  * PM2 — MatuCall API (producción)
- * App: https://call-api.matudb.com
+ * App: https://call.api.matudb.com
  */
 const APP_DIR = '/root/apps/call-api';
 
