@@ -49,7 +49,7 @@ def main() -> int:
     run(
         client,
         "sed -i 's/127.0.0.1:4100/127.0.0.1:4110/g' "
-        "/etc/nginx/sites-available/call.api.matudb.com && "
+        "/etc/nginx/sites-available/call.api.matubyte.com && "
         "nginx -t && systemctl reload nginx",
     )
 
