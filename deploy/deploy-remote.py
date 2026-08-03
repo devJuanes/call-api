@@ -200,7 +200,9 @@ def main() -> int:
 
     run(
         client,
-        f"if [ ! -f /etc/letsencrypt/live/{DOMAIN}/fullchain.pem ]; then "
+        f"if [ -f /etc/letsencrypt/live/{DOMAIN}/fullchain.pem ]; then "
+        f"certbot --nginx -d {DOMAIN} --non-interactive --reinstall --redirect || true; "
+        f"else "
         f"certbot --nginx -d {DOMAIN} --non-interactive --agree-tos "
         f"--register-unsafely-without-email --redirect || true; fi",
         timeout=180,
