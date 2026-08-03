@@ -3,6 +3,7 @@
 <head>
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <link rel="icon" href="data:," />
   <title>MatuCall Web — join production room</title>
   <script src="https://cdn.socket.io/4.8.1/socket.io.min.js"></script>
   <style>
@@ -173,6 +174,19 @@ function setCallStatus(html, isErr) {
   $('callStatus').className = 'status ' + (isErr ? 'err' : '');
 }
 
+function formatApiError(json, fallback = 'Request failed') {
+  const err = json?.error;
+  if (!err) return fallback;
+  if (typeof err === 'string') return err;
+  if (typeof err?.message === 'string') return err.message;
+  if (err?.fieldErrors) {
+    return Object.entries(err.fieldErrors)
+      .map(([k, v]) => `${k}: ${Array.isArray(v) ? v.join(', ') : v}`)
+      .join('; ') || fallback;
+  }
+  try { return JSON.stringify(err); } catch { return fallback; }
+}
+
 async function api(path, { method = 'GET', body, auth = true } = {}) {
   const headers = { 'Content-Type': 'application/json' };
   if (auth && state.token) headers.Authorization = `Bearer ${state.token}`;
@@ -182,7 +196,7 @@ async function api(path, { method = 'GET', body, auth = true } = {}) {
     body: body ? JSON.stringify(body) : undefined,
   });
   const json = await res.json().catch(() => ({}));
-  if (!res.ok) throw new Error(json.error?.message || json.error || res.statusText);
+  if (!res.ok) throw new Error(formatApiError(json, res.statusText));
   return json.data ?? json;
 }
 

@@ -17,7 +17,14 @@ const credentialsSchema = z.object({
 authRouter.post('/signup', async (req, res) => {
   const parsed = credentialsSchema.safeParse(req.body);
   if (!parsed.success) {
-    return res.status(400).json({ error: parsed.error.flatten() });
+    const flat = parsed.error.flatten();
+    const field = Object.entries(flat.fieldErrors)
+      .map(([k, v]) => `${k}: ${(v as string[]).join(', ')}`)
+      .join('; ');
+    return res.status(400).json({
+      error: field || flat.formErrors.join('; ') || 'Invalid signup data',
+      details: flat,
+    });
   }
   const { email, password, full_name } = parsed.data;
   const name = full_name ?? email.split('@')[0];
@@ -52,7 +59,13 @@ authRouter.post('/signup', async (req, res) => {
 
     const db = getMatuDb();
     const { data, error } = await db.auth.signUp({ email, password });
-    if (error) return res.status(400).json({ error: error.message });
+    if (error) {
+      const message =
+        typeof error === 'string'
+          ? error
+          : (error as { message?: string })?.message || JSON.stringify(error);
+      return res.status(400).json({ error: message });
+    }
     const user = data?.user;
     if (!user?.id) return res.status(400).json({ error: 'Signup failed' });
     const profile = await dataService.upsertProfile({
@@ -61,13 +74,27 @@ authRouter.post('/signup', async (req, res) => {
       full_name: name,
       first_name: first,
     });
-    const session = data?.session;
+    let session = data?.session;
+    // Some MatuDB configs create the user but omit session — sign in immediately.
+    if (!session?.access_token) {
+      const signed = await db.auth.signInWithPassword({ email, password });
+      if (signed.error || !signed.data?.session?.access_token) {
+        return res.status(400).json({
+          error:
+            typeof signed.error === 'string'
+              ? signed.error
+              : signed.error?.message ||
+                'Account created but session missing. Try Sign in.',
+        });
+      }
+      session = signed.data.session;
+    }
     return res.json({
       data: {
         user: profile,
         session: {
-          access_token: session?.access_token,
-          expires_at: session?.expires_at != null ? String(session.expires_at) : null,
+          access_token: session.access_token,
+          expires_at: session.expires_at != null ? String(session.expires_at) : null,
           user: profile,
         },
       },
@@ -80,7 +107,14 @@ authRouter.post('/signup', async (req, res) => {
 authRouter.post('/signin', async (req, res) => {
   const parsed = credentialsSchema.safeParse(req.body);
   if (!parsed.success) {
-    return res.status(400).json({ error: parsed.error.flatten() });
+    const flat = parsed.error.flatten();
+    const field = Object.entries(flat.fieldErrors)
+      .map(([k, v]) => `${k}: ${(v as string[]).join(', ')}`)
+      .join('; ');
+    return res.status(400).json({
+      error: field || flat.formErrors.join('; ') || 'Invalid credentials',
+      details: flat,
+    });
   }
   const { email, password } = parsed.data;
 
